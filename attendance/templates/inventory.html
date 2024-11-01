@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Management</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        h1, h2 {
+            color: #333;
+            text-align: center;
+        }
+
+        #inventoryForm, #inventoryTable, #scannerSection {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        #error {
+            color: red;
+            margin-bottom: 10px;
+        }
+
+        #reader {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        #scannedResult {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Inventory Management</h1>
+    
+    <div id="scannerSection">
+        <h2>Scan Barcode</h2>
+        <div id="reader"></div>
+        <div id="scannedResult"></div>
+    </div>
+
+    <div id="inventoryForm">
+        <h2>Add New Item</h2>
+        <div id="error"></div>
+        <form id="addItemForm">
+            <label for="itemId">Item ID (Scanned or Manual):</label>
+            <input type="text" id="itemId" required>
+            
+            <label for="itemName">Item Name:</label>
+            <input type="text" id="itemName" required>
+            
+            <label for="itemQuantity">Quantity:</label>
+            <input type="number" id="itemQuantity" required min="0">
+            
+            <button type="submit">Add/Update Item</button>
+        </form>
+    </div>
+
+    <div id="inventoryTable">
+        <h2>Current Inventory</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Item ID</th>
+                    <th>Item Name</th>
+                    <th>Quantity</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="inventoryList">
+                <!-- Inventory items will be inserted here -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            let html5BarcodeScanner;
+
+            // Initialize barcode scanner
+            function initializeScanner() {
+                html5BarcodeScanner = new Html5Qrcode("reader");
+                const config = {
+                    fps: 10,
+                    qrbox: { width: 250, height: 100 },
+                    formatsToSupport: [ 
+                        Html5QrcodeSupportedFormats.EAN_13,
+                        Html5QrcodeSupportedFormats.EAN_8,
+                        Html5QrcodeSupportedFormats.CODE_39,
+                        Html5QrcodeSupportedFormats.CODE_93,
+                        Html5QrcodeSupportedFormats.CODE_128,
+                        Html5QrcodeSupportedFormats.UPC_A,
+                        Html5QrcodeSupportedFormats.UPC_E,
+                        Html5QrcodeSupportedFormats.ITF,
+                        Html5QrcodeSupportedFormats.CODABAR
+                    ],
+                    experimentalFeatures: {
+                        useBarCodeDetectorIfSupported: true
+                    }
+                };
+                
+                html5BarcodeScanner.start(
+                    { facingMode: "environment" },
+                    config,
+                    onScanSuccess,
+                    onScanFailure
+                ).catch(function (err) {
+                    console.error(`Failed to start barcode scanner: ${err}`);
+                    $('#error').text('Failed to start barcode scanner. Please check your camera.');
+                });
+            }
+
+            // Handle successful barcode scan
+            function onScanSuccess(decodedText, decodedResult) {
+                $('#scannedResult').text(`Scanned Barcode: ${decodedText}`);
+                $('#itemId').val(decodedText);
+                fetchItemDetails(decodedText);
+            }
+
+            // Handle scan failure
+            function onScanFailure(error) {
+                // Log less frequently to avoid console flooding
+                if (Math.random() < 0.1) {  // Log roughly 10% of errors
+                    console.warn(`Barcode scan error: ${error}`);
+                }
+            }
+
+            // Fetch item details based on scanned barcode or manually entered ID
+            function fetchItemDetails(itemId) {
+                $.ajax({
+                    url: `/get-item/${itemId}/`,
+                    method: 'GET',
+                    success: function(item) {
+                        if (item && item.id) {
+                            $('#itemName').val(item.name);
+                            $('#itemQuantity').val(item.quantity);
+                        } else {
+                            $('#itemName').val('');
+                            $('#itemQuantity').val('');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        // If the item doesn't exist, clear the fields
+                        $('#itemName').val('');
+                        $('#itemQuantity').val('');
+                        console.log('Item not found. Ready for new entry.');
+                    }
+                });
+            }
+
+            // Fetch and display inventory
+            function fetchInventory() {
+                $.ajax({
+                    url: '/get-inventory/',
+                    method: 'GET',
+                    success: function(data) {
+                        $('#inventoryList').empty();
+                        data.forEach(function(item) {
+                            $('#inventoryList').append(`
+                                <tr>
+                                    <td>${item.id}</td>
+                                    <td>${item.name}</td>
+                                    <td>${item.quantity}</td>
+                                    <td>
+                                        <button onclick="updateItem('${item.id}')">Update</button>
+                                        <button onclick="deleteItem('${item.id}')">Delete</button>
+                                    </td>
+                                </tr>
+                            `);
+                        });
+                    },
+                    error: function(xhr, status, error) {
+                        $('#error').text('Error fetching inventory: ' + error);
+                        console.error('Error details:', xhr.responseText);
+                    }
+                });
+            }
+
+            // Add or update item
+            $('#addItemForm').submit(function(e) {
+                e.preventDefault();
+                const itemId = $('#itemId').val();
+                const itemName = $('#itemName').val();
+                const itemQuantity = $('#itemQuantity').val();
+
+                // Replace with actual server endpoint for adding/updating items
+                $.ajax({
+                    url: '/add-update-item/',  
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ id: itemId, name: itemName, quantity: itemQuantity }),
+                    success: function(response) {
+                        $('#itemId').val('');
+                        $('#itemName').val('');
+                        $('#itemQuantity').val('');
+                        $('#scannedResult').text('');
+                        fetchInventory();  // Refresh the inventory list
+                    },
+                    error: function(xhr, status, error) {
+                        $('#error').text('Error adding/updating item: ' + error);
+                    }
+                });
+            });
+
+            // Update item when clicking "Update"
+            window.updateItem = function(itemId) {
+                fetchItemDetails(itemId);
+                $('#itemId').val(itemId);
+            }
+
+            // Delete item when clicking "Delete"
+            window.deleteItem = function(itemId) {
+                if (confirm("Are you sure you want to delete this item?")) {
+                    // Replace with actual server endpoint for deleting items
+                    $.ajax({
+                        url: '/delete-item/',  
+                        method: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({ id: itemId }),
+                        success: function(response) {
+                            fetchInventory();  // Refresh the inventory list
+                        },
+                        error: function(xhr, status, error) {
+                            $('#error').text('Error deleting item: ' + error);
+                        }
+                    });
+                }
+            }
+
+            // Initialize scanner and fetch inventory on page load
+            initializeScanner();
+            fetchInventory();
+        });
+    </script>
+</body>
+
+</html>

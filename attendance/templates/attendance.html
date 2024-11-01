@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Management</title>
+
+    <!-- Updated script tag for html5-qrcode -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f7f9fc;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+
+        tr:hover {
+            background-color: #ddd;
+        }
+
+        #error {
+            color: red;
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        #reader {
+            width: 100%;
+            max-width: 500px;
+            margin: 20px auto;
+            text-align: center;
+        }
+
+        @media (max-width: 600px) {
+            table {
+                font-size: 14px;
+            }
+
+            th,
+            td {
+                padding: 8px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Attendance Management</h1>
+    <div id="error"></div>
+
+    <!-- QR Code Reader -->
+    <div id="reader"></div>
+
+    <table id="attendanceTable">
+        <thead>
+            <tr>
+                <th>Student ID</th>
+                <th>Name</th>
+                <th>Date</th>
+                <th>Time In</th>
+                <th>Time Out</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Data will be populated here -->
+        </tbody>
+    </table>
+
+    <script>
+        // Mock storage to keep track of attendance data locally
+        const attendanceData = {};
+
+        // Function to update the attendance table
+        function updateAttendanceTable() {
+            const currentDate = new Date().toISOString().split('T')[0];
+            const tbody = document.querySelector('#attendanceTable tbody');
+            tbody.innerHTML = ''; // Clear the table first
+
+            for (let studentId in attendanceData) {
+                let record = attendanceData[studentId];
+                let row = `<tr>
+                    <td>${studentId}</td>
+                    <td>${record.name}</td>
+                    <td>${currentDate}</td>
+                    <td>${record.timeIn ? record.timeIn : 'N/A'}</td>
+                    <td>${record.timeOut ? record.timeOut : 'N/A'}</td>
+                </tr>`;
+                tbody.innerHTML += row;
+            }
+        }
+
+        // Function to handle QR code scan
+        function onScanSuccess(qrMessage) {
+            console.log(`QR Code detected: ${qrMessage}`);
+
+            try {
+                // Parse the QR code data
+                const qrData = Function('return ' + qrMessage)();
+                const studentId = qrData.student_id;
+                const studentName = qrData.student_name;
+
+                if (!studentId || !studentName) {
+                    throw new Error('Invalid QR code data');
+                }
+
+                const currentTime = new Date().toLocaleTimeString();
+                const currentDate = new Date().toISOString().split('T')[0];
+
+                if (!attendanceData[studentId] || attendanceData[studentId].date !== currentDate) {
+                    // Student has not signed in today, record time in
+                    attendanceData[studentId] = { name: studentName, date: currentDate, timeIn: currentTime, timeOut: null };
+                    console.log(`Student ${studentName} signed in at ${currentTime}`);
+                } else if (!attendanceData[studentId].timeOut) {
+                    // Student has signed in but not out, record time out
+                    attendanceData[studentId].timeOut = currentTime;
+                    console.log(`Student ${studentName} signed out at ${currentTime}`);
+                } else {
+                    // Student has already signed in and out today
+                    console.log(`Student ${studentName} has already completed attendance for today`);
+                }
+
+                // Update the table with the new data
+                updateAttendanceTable();
+
+                // Clear any previous error messages
+                document.getElementById('error').style.display = 'none';
+
+            } catch (error) {
+                console.error('Error processing QR code:', error);
+                document.getElementById('error').textContent = 'Invalid QR code. Please try again.';
+                document.getElementById('error').style.display = 'block';
+            }
+        }
+
+        function onScanError(errorMessage) {
+            console.error(`QR Code scan error: ${errorMessage}`);
+        }
+
+        const html5QrCode = new Html5Qrcode("reader");
+
+        // Start scanning with the back camera
+        html5QrCode.start(
+            { facingMode: "environment" },
+            {
+                fps: 10,
+                qrbox: { width: 250, height: 250 }
+            },
+            onScanSuccess,
+            onScanError
+        ).catch(function (err) {
+            console.error(`Failed to start QR scanner: ${err}`);
+            document.getElementById('error').textContent = 'Failed to start QR scanner. Please check your camera.';
+            document.getElementById('error').style.display = 'block';
+        });
+    </script>
+</body>
+
+</html>
